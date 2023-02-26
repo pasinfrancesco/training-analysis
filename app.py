@@ -3,6 +3,29 @@ import pandas as pd
 import plotly.express as px
 import numpy as np
 from collections import Counter
+from google.oauth2 import service_account
+from shillelagh.backends.apsw.db import connect
+from datetime import date
+
+# Create a connection object.
+credentials = service_account.Credentials.from_service_account_info(
+    st.secrets["gcp_service_account"],
+    scopes=[
+        "https://www.googleapis.com/auth/spreadsheets",
+    ],
+)
+#print(st.secrets["gcp_service_account"])
+
+#conn = connect(credentials=credentials)
+
+creds = st.secrets["gcp_service_account"]
+creds_dict = {}
+for c in creds:
+    creds_dict[c] = creds[c]
+
+connection = connect(":memory:", adapter_kwargs={"gsheetsapi": 
+                                                    {"service_account_info": creds_dict}
+                                                })
 
 def create_hb_plot(df_hb, age):
     f_max = compute_f_max(age)
@@ -49,7 +72,7 @@ def create_hb_dist(df_hb, zones, f_max):
         freqs[k] = (freqs[k]/n_samples)*100
 
     df = pd.DataFrame.from_dict(freqs, orient="index")
-    fig = px.bar(df)
+    fig = px.bar(df, orientation='h')
     fig.update_traces(showlegend = False)
     fig.update_layout(xaxis_title="Zone di frequenza", yaxis_title="Percentuale", plot_bgcolor = "white", paper_bgcolor = "white")
     fig.update_yaxes(showgrid = False)
@@ -102,9 +125,44 @@ def check_password():
         # Password correct.
         return True
 
+def retrieve_data(connection):
+    cursor = connection.cursor()
+    url = st.secrets["private_gsheets_url"]
+    query = f'SELECT * from "{url}"'
+    data = {}
+    id = 0
+    for row in cursor.execute(query):
+        data[str(id)] = {"name":row[0], "birthdate": row[1]}
+        id +=1
+    return data
+
+def prepare_options(data):
+    id_names = []
+    for d in data.keys():
+        id_names.append(d)
+    return id_names
+
+def format_options(option):
+    return data[option]["name"]
+
+def calculateAge(birthDate):
+    today = date.today()
+    age = today.year - birthDate.year - ((today.month, today.day) < (birthDate.month, birthDate.day))
+ 
+    return age
+
+def show_results():
+    st.session_state.showResults = True
+    return None
+
 st.set_page_config(layout="wide")
+if 'showResults' not in st.session_state:
+    st.session_state["showResults"] = False
 
 if check_password():
+    
+    data = retrieve_data(connection)
+    id_names = prepare_options(data)
 
     st.write("# Analisi seduta allenamento")
 
@@ -112,15 +170,17 @@ if check_password():
     file = cont_file.file_uploader("Carica un file csv relativo ad una sessione di allenamento", type={"csv"})
 
     cont_name = st.empty()
-    name = cont_name.text_input(label="Nome dell'atleta")
+    name_id = cont_name.selectbox(label="Nome dell'atleta", options=id_names, format_func=format_options)
+    name = data[name_id]["name"]
+    age = calculateAge(data[name_id]["birthdate"])
 
-    cont_age = st.empty()
-    age = cont_age.text_input(label="Età dell'atleta")
+    if file!= None and not st.session_state["showResults"]:
+        st.button(label="Esegui analisi", on_click=show_results)
 
-    if file != None and age != "":
+    if st.session_state["showResults"]:
         cont_file.empty()
         cont_name.empty()
-        cont_age.empty()
+        #cont_age.empty()
         # prev_df = file
         # prev_age = age
         df = pd.read_csv(file, skiprows=[0,1])
@@ -149,8 +209,10 @@ if check_password():
 
         fig2 = create_hb_dist(df_useful, zones, fmax)
 
-        st.plotly_chart(fig, use_container_width=True)
-        st.plotly_chart(fig2, use_container_width=True)
+        c5, c6 = st.columns((6,2))
+        
+        c5.plotly_chart(fig, use_container_width=True)
+        c6.plotly_chart(fig2, use_container_width=True)
 
         # st.download_button(label="Scarica report", data="")
 
