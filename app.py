@@ -74,61 +74,90 @@ def search_additional_info(df):
     calories = list(df["Calories"])[0]
     return distance, avg_freq, avg_speed, calories
 
+def check_password():
+    """Returns `True` if the user had the correct password."""
+
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        if st.session_state["password"] == st.secrets["password"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # don't store password
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        # First run, show input for password.
+        st.text_input(
+            "Password", type="password", on_change=password_entered, key="password"
+        )
+        return False
+    elif not st.session_state["password_correct"]:
+        # Password not correct, show input + error.
+        st.text_input(
+            "Password", type="password", on_change=password_entered, key="password"
+        )
+        st.error("😕 Password incorrect")
+        return False
+    else:
+        # Password correct.
+        return True
 
 st.set_page_config(layout="wide")
 
-st.write("# Analisi seduta allenamento")
+if check_password():
 
-cont_file = st.empty()
-file = cont_file.file_uploader("Carica un file csv relativo ad una sessione di allenamento", type={"csv"})
+    st.write("# Analisi seduta allenamento")
 
-cont_name = st.empty()
-name = cont_name.text_input(label="Nome dell'atleta")
+    cont_file = st.empty()
+    file = cont_file.file_uploader("Carica un file csv relativo ad una sessione di allenamento", type={"csv"})
 
-cont_age = st.empty()
-age = cont_age.text_input(label="Età dell'atleta")
+    cont_name = st.empty()
+    name = cont_name.text_input(label="Nome dell'atleta")
 
-if file != None and age != "":
-    cont_file.empty()
-    cont_name.empty()
-    cont_age.empty()
-    # prev_df = file
-    # prev_age = age
-    df = pd.read_csv(file, skiprows=[0,1])
-    df_useful  = df[["Time", "HR (bpm)"]]
-    file.seek(0)
-    # st.write(df_useful.head())
-    try:
-        df_add = pd.read_csv(file, nrows=1)
-        dist, av_freq, av_speed, kal = search_additional_info(df_add)
-    except:
-        pass
+    cont_age = st.empty()
+    age = cont_age.text_input(label="Età dell'atleta")
 
-    st.write(f"**Nome atleta**: {name}")
-    st.write(f"**Età dell'atleta**:  {age} anni")
+    if file != None and age != "":
+        cont_file.empty()
+        cont_name.empty()
+        cont_age.empty()
+        # prev_df = file
+        # prev_age = age
+        df = pd.read_csv(file, skiprows=[0,1])
+        df_useful  = df[["Time", "HR (bpm)"]]
+        file.seek(0)
+        # st.write(df_useful.head())
+        try:
+            df_add = pd.read_csv(file, nrows=1)
+            dist, av_freq, av_speed, kal = search_additional_info(df_add)
+        except:
+            pass
 
-    try:
-        c1, c2, c3, c4 = st.columns((1, 1, 1, 1))
-        c1.markdown(f":round_pushpin:**Distanza totale percorsa**: {dist} km")
-        c2.markdown(f":heart:**Frequenza cardiaca media**: {av_freq} bpm")
-        c3.markdown(f":man-running:**Andatura media**: {av_speed} km/h")
-        c4.write(f":fire:**Calorie consumate**: {kal} calorie")
-    except:
-        pass
+        st.write(f"**Nome atleta**: {name}")
+        st.write(f"**Età dell'atleta**:  {age} anni")
 
-    fig, zones, fmax = create_hb_plot(df_useful, int(age))
+        try:
+            c1, c2, c3, c4 = st.columns((1, 1, 1, 1))
+            c1.markdown(f":round_pushpin:**Distanza totale percorsa**: {dist} km")
+            c2.markdown(f":heart:**Frequenza cardiaca media**: {av_freq} bpm")
+            c3.markdown(f":man-running:**Andatura media**: {av_speed} km/h")
+            c4.write(f":fire:**Calorie consumate**: {kal} calorie")
+        except:
+            pass
 
-    fig2 = create_hb_dist(df_useful, zones, fmax)
+        fig, zones, fmax = create_hb_plot(df_useful, int(age))
 
-    st.plotly_chart(fig, use_container_width=True)
-    st.plotly_chart(fig2, use_container_width=True)
+        fig2 = create_hb_dist(df_useful, zones, fmax)
 
-    # st.download_button(label="Scarica report", data="")
+        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig2, use_container_width=True)
 
-    # if file != prev_df:
-    #     age = ""
-    # if age != prev_age:
-    #     st.experimental_rerun()
+        # st.download_button(label="Scarica report", data="")
 
-##TODO: Aggiungere tasto download report, scrive dati atleta e incolla il grafico su un A4 bianco
+        # if file != prev_df:
+        #     age = ""
+        # if age != prev_age:
+        #     st.experimental_rerun()
+
+    ##TODO: Aggiungere tasto download report, scrive dati atleta e incolla il grafico su un A4 bianco
 
