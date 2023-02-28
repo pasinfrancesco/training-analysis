@@ -6,6 +6,7 @@ from collections import Counter
 from google.oauth2 import service_account
 from shillelagh.backends.apsw.db import connect
 from datetime import date
+import pymongo
 
 # Create a connection object.
 credentials = service_account.Credentials.from_service_account_info(
@@ -17,6 +18,13 @@ credentials = service_account.Credentials.from_service_account_info(
 #print(st.secrets["gcp_service_account"])
 
 #conn = connect(credentials=credentials)
+
+mongo_user = st.secrets["mongo_user"]
+mongo_pw = st.secrets["mongo_pw"]
+client = pymongo.MongoClient(f"mongodb+srv://{mongo_user}:{mongo_pw}@cluster0.nmfddqf.mongodb.net/?retryWrites=true&w=majority")
+db = client.TrainingAnalysis
+collection = db["trainings"]
+
 
 creds = st.secrets["gcp_service_account"]
 creds_dict = {}
@@ -73,7 +81,7 @@ def create_hb_dist(df_hb, zones, f_max):
 
     df = pd.DataFrame.from_dict(freqs, orient="index")
     fig = px.bar(df, orientation='h')
-    fig.update_traces(showlegend = False)
+    fig.update_traces(showlegend = False, marker_color=["grey", "blue", "green", "yellow", "red"], opacity=0.2)
     fig.update_layout(xaxis_title="Zone di frequenza", yaxis_title="Percentuale", plot_bgcolor = "white", paper_bgcolor = "white")
     fig.update_yaxes(showgrid = False)
 
@@ -130,10 +138,8 @@ def retrieve_data(connection):
     url = st.secrets["private_gsheets_url"]
     query = f'SELECT * from "{url}"'
     data = {}
-    id = 0
     for row in cursor.execute(query):
-        data[str(id)] = {"name":row[0], "birthdate": row[1]}
-        id +=1
+        data[row[0]] = {"name":row[1], "birthdate": row[2]}
     return data
 
 def prepare_options(data):
@@ -151,8 +157,33 @@ def calculateAge(birthDate):
  
     return age
 
-def show_results():
+def show_results_and_insert(file, name_id):
     st.session_state.showResults = True
+
+    if file != None:
+        df = pd.read_csv(file, skiprows=[0,1])
+        df_useful  = df[["Time", "HR (bpm)"]]
+        dict_useful = df_useful.to_dict(orient='series')
+        for k in dict_useful:
+            dict_useful[k] = list(dict_useful[k])
+        file.seek(0)
+        # st.write(df_useful.head())
+        try:
+            df_add = pd.read_csv(file, nrows=1)
+            dist, av_freq, av_speed, kal = search_additional_info(df_add)
+        except:
+            pass
+        
+        document = {
+            "player_id": name_id,
+            "date": date.today().strftime("%m/%d/%Y"),
+            "distance": dist,
+            "average_frequence": av_freq,
+            "average_speed": av_speed,
+            "calories": kal,
+            "heartbeat": dict_useful
+        }
+        collection.insert_one(document)
     return None
 
 st.set_page_config(layout="wide")
@@ -166,6 +197,9 @@ if check_password():
 
     st.write("# Analisi seduta allenamento")
 
+    if not st.session_state["showResults"]:
+        st.write("Caricare un file e selezionare un atleta per aggiungere la seduta allo storico e visualizzarla assieme alle precedenti. Se si desidera visualizzare solo lo storico, selezionare solo l'atleta e premere il pulsante.")
+
     cont_file = st.empty()
     file = cont_file.file_uploader("Carica un file csv relativo ad una sessione di allenamento", type={"csv"})
 
@@ -174,8 +208,8 @@ if check_password():
     name = data[name_id]["name"]
     age = calculateAge(data[name_id]["birthdate"])
 
-    if file!= None and not st.session_state["showResults"]:
-        st.button(label="Esegui analisi", on_click=show_results)
+    if not st.session_state["showResults"]:
+        st.button(label="Visualizza analisi", on_click=show_results_and_insert, args=[file, name_id])
 
     if st.session_state["showResults"]:
         cont_file.empty()
@@ -183,36 +217,48 @@ if check_password():
         #cont_age.empty()
         # prev_df = file
         # prev_age = age
-        df = pd.read_csv(file, skiprows=[0,1])
-        df_useful  = df[["Time", "HR (bpm)"]]
-        file.seek(0)
-        # st.write(df_useful.head())
-        try:
-            df_add = pd.read_csv(file, nrows=1)
-            dist, av_freq, av_speed, kal = search_additional_info(df_add)
-        except:
-            pass
+        # df = pd.read_csv(file, skiprows=[0,1])
+        # df_useful  = df[["Time", "HR (bpm)"]]
+        # file.seek(0)
+        # # st.write(df_useful.head())
+        # try:
+        #     df_add = pd.read_csv(file, nrows=1)
+        #     dist, av_freq, av_speed, kal = search_additional_info(df_add)
+        # except:
+        #     pass
+
+        trainings = collection.find({"player_id": name_id})
 
         st.write(f"**Nome atleta**: {name}")
         st.write(f"**Età dell'atleta**:  {age} anni")
 
-        try:
-            c1, c2, c3, c4 = st.columns((1, 1, 1, 1))
-            c1.markdown(f":round_pushpin:**Distanza totale percorsa**: {dist} km")
-            c2.markdown(f":heart:**Frequenza cardiaca media**: {av_freq} bpm")
-            c3.markdown(f":man-running:**Andatura media**: {av_speed} km/h")
-            c4.write(f":fire:**Calorie consumate**: {kal} calorie")
-        except:
-            pass
+        for t in trainings:
+            st.markdown("""----""")
+            date_ = t["date"]
+            st.markdown(f":calendar:**Data allenamento**: {date_}")
+            try:
+                dist = t["distance"]
+                av_freq = t["average_frequence"]
+                av_speed = t["average_speed"]
+                kal = t["calories"]
 
-        fig, zones, fmax = create_hb_plot(df_useful, int(age))
+                c1, c2, c3, c4 = st.columns((1, 1, 1, 1))
+                c1.markdown(f":round_pushpin:**Distanza totale percorsa**: {dist} km")
+                c2.markdown(f":heart:**Frequenza cardiaca media**: {av_freq} bpm")
+                c3.markdown(f":man-running:**Andatura media**: {av_speed} km/h")
+                c4.write(f":fire:**Calorie consumate**: {kal} calorie")
+            except:
+                pass
+            
+            df_useful = pd.DataFrame.from_dict(t["heartbeat"])
+            fig, zones, fmax = create_hb_plot(df_useful, int(age))
 
-        fig2 = create_hb_dist(df_useful, zones, fmax)
+            fig2 = create_hb_dist(df_useful, zones, fmax)
 
-        c5, c6 = st.columns((6,2))
-        
-        c5.plotly_chart(fig, use_container_width=True)
-        c6.plotly_chart(fig2, use_container_width=True)
+            c5, c6 = st.columns((6,2))
+            
+            c5.plotly_chart(fig, use_container_width=True)
+            c6.plotly_chart(fig2, use_container_width=True)
 
         # st.download_button(label="Scarica report", data="")
 
