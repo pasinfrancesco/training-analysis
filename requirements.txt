@@ -80,3 +80,4 @@ wcwidth==0.2.6
 wincertstore==0.2
 zipp==3.13.0
 shillelagh[all]
+pymongo[srv]
