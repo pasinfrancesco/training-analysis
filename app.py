@@ -176,7 +176,7 @@ def show_results_and_insert(file, name_id):
         
         document = {
             "player_id": name_id,
-            "date": date.today().strftime("%m/%d/%Y"),
+            "date": date.today().strftime("%d/%m/%Y"),
             "distance": dist,
             "average_frequence": av_freq,
             "average_speed": av_speed,
