@@ -82,7 +82,7 @@ def create_hb_dist(df_hb, zones, f_max):
     df = pd.DataFrame.from_dict(freqs, orient="index")
     fig = px.bar(df, orientation='h')
     fig.update_traces(showlegend = False, marker_color=["grey", "blue", "green", "yellow", "red"], opacity=0.2)
-    fig.update_layout(xaxis_title="Zone di frequenza", yaxis_title="Percentuale", plot_bgcolor = "white", paper_bgcolor = "white")
+    fig.update_layout(yaxis_title="Zone di frequenza", xaxis_title="Percentuale", plot_bgcolor = "white", paper_bgcolor = "white")
     fig.update_yaxes(showgrid = False)
 
     return fig
